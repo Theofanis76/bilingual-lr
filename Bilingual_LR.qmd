@@ -1,0 +1,280 @@
+---
+title: "The New Era of Machine Learning in R: A Bilingual Linear Regression Workflow (R vs Python)"
+author: "Theofanis Tsitrouls"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: false
+    smooth-scroll: true
+    code-fold: true
+    code-tools: true
+    embed-resources: true
+---
+
+![](images/1761348952920-01.jpg){fig-align="center"}
+
+# Introduction
+
+#### This analysis compares how R and Python approach the same linear regression problem, focusing on workflow design, preprocessing, and model evaluation rather than model optimization. A publicly available FIFA player dataset with fictional data is used, with a simplified subset of five variables selected from a much larger feature set. Overall rating is treated as the target variable, while age, height, weight, and potential are used as predictors, providing a clear and consistent basis for comparing R’s tidymodels and Python’s statsmodels.
+
+```{r}
+#| include: false
+library(reticulate)
+use_python("C:/Users/USER/anaconda3/python.exe", required = TRUE)
+
+```
+
+## **Import tidymodels**, the only R package used in this analysis
+
+```{r, message=F, warning=F}
+library(tidymodels)
+```
+
+### Import the FIFA data set
+
+#### Loading data in R is straightforward, and additional arguments are used here to explicitly handle missing values that were identified during the initial exploration of the dataset in Python.
+
+```{r}
+fifa_r <- read.csv(
+  "C:/Users/user/Desktop/fifa_ml.csv",
+  fileEncoding = "latin1",
+  na.strings = c("", " ", "NA", "NaN"),  # treat these as missing
+  stringsAsFactors = FALSE
+)
+
+```
+
+### Select the relevant columns
+
+#### From the full dataset, only the variables required for the analysis are retained.
+
+```{r}
+df_r <- fifa_r %>% 
+  select(Age, Height, Weight, Potential, Overall)
+
+head(df_r, 2) # Check the fist 2 rows of the dataset
+```
+
+### Basic exploratory data analysis – data types and missing values
+
+#### The data types and missing values of each variable are inspected to identify non-numeric fields and potential issues that will be addressed during the modeling process.
+
+```{r}
+str(df_r)
+colSums(is.na(df_r))
+```
+
+#### The analysis reveals a small number of missing values, which are removed given the size of the dataset. Additionally, height and weight are stored as character variables and require conversion to numeric format. In the tidymodels framework, these preprocessing steps are handled directly within the modeling workflow.
+
+# Building a linear regression model with tidymodels
+
+### Step 1 - Split the data into training and testing set
+
+```{r}
+# I use a conventional split 80/20
+
+set.seed(42)
+
+index <- initial_split(df_r, prop = 0.8)
+train_set <- training(index)
+test_set <- testing(index)
+```
+
+### Step 2 - Linear Regression
+
+#### A linear regression model is defined using tidymodels with the `lm` engine.
+
+```{r}
+model_spec <- linear_reg() %>% set_engine("lm")
+```
+
+### Step 3 – Define the parameters: data wrangling within the model
+
+#### A recipe is defined to handle missing values and convert height and weight to numeric format as part of the modeling workflow. The same approach could also be extended to include additional preprocessing steps such as imputation, normalization, or feature engineering if required.
+
+#### For simplicity, height is converted by replacing the apostrophe with a decimal point. This is not a mathematically exact transformation, but a more precise conversion is beyond the scope of this report.
+
+```{r}
+recipe_spec <- recipe(Overall ~., data = train_set) %>% 
+  step_naomit(all_numeric_predictors(), all_outcomes()) %>% 
+  step_mutate(Height = as.numeric(gsub("'", ".", Height)),
+              Weight = as.numeric(gsub("lbs", "", Weight)))
+```
+
+### Step 4 - The workflow
+
+#### The model specification and preprocessing recipe are combined into a single workflow, ensuring that all steps are applied consistently during model fitting and evaluation.
+
+```{r}
+wf <- workflow() %>% 
+  add_model(model_spec) %>% 
+  add_recipe(recipe_spec)
+```
+
+### Step 5 - Fit the model
+
+#### The workflow is trained on the training set, applying the defined preprocessing steps and fitting the linear regression model in a single operation.
+
+```{r}
+fit_wf <- fit(wf, data = train_set)
+```
+
+## Model Inspection
+
+```{r}
+fit_lm <- extract_fit_engine(fit_wf)
+
+summary(fit_lm)
+
+```
+
+### Final Model Evaluation
+
+#### Predictions are generated for the testing set and combined with the observed values to evaluate model performance using standard regression metrics.
+
+```{r}
+pred <- predict(fit_wf, new_data = test_set)
+results <- bind_cols(test_set, pred)
+
+metrics(results, truth = Overall, estimate = .pred)
+```
+
+# Linear regression in Python with statsmodels
+
+#### The same analysis is now replicated in Python using statsmodels, following a clear and explicit workflow for data preparation, model fitting, and evaluation.
+
+### Import pandas and load the dataset
+
+#### The pandas library is used to load the FIFA dataset and prepare it for analysis in Python.
+
+```{python}
+import pandas as pd
+
+fifa_py = pd.read_csv("C:/Users/user/Desktop/fifa_ml.csv", encoding="latin1")
+
+```
+
+### Select the variables
+
+### 
+
+From the full dataset, only the variables required for the analysis are retained.
+
+```{python}
+
+df_py = fifa_py[['Age', 'Height', 'Weight', 'Potential', 'Overall']].copy()
+
+df_py.head()
+
+```
+
+## Explicit Pre-Modeling Steps in Python
+
+### Basic exploratory data analysis – data types and missing values
+
+#### The structure of the dataset and the presence of missing values are examined to identify any issues that must be addressed before modeling.
+
+```{python}
+df_py.info()
+```
+
+### Missing values
+
+```{python}
+df_py.isna().sum()
+```
+
+### Drop Missing Values
+
+```{python}
+df_py = df_py.dropna()
+```
+
+### **Data wrangling and type conversion**
+
+```{python}
+
+df_py['Weight'] = (df_py['Weight'].astype(str)
+                   .str.replace('lbs', '', regex=False)
+                   .str.strip())
+df_py['Height'] = (df_py['Height'].astype(str)
+                   .str.replace("'", ".", regex=False)
+                   .str.strip())
+
+df_py['Weight'] = pd.to_numeric(df_py['Weight'], errors='coerce')
+df_py['Height'] = pd.to_numeric(df_py['Height'], errors='coerce')
+
+```
+
+# Build the Model in Python
+
+### Step 1 - Define target and feature variables
+
+#### The dependent (target) variable and predictor (feature) variables are explicitly defined, which is required before model fitting in Python.
+
+```{python}
+X = df_py.drop("Overall", axis=1)
+y = df_py["Overall"]
+
+```
+
+### Step 2 - Split the data
+
+#### The dataset is split into training and testing sets using `train_test_split` from scikit-learn.
+
+```{python}
+from sklearn.model_selection import train_test_split
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+```
+
+### Step 3 - Add intercept (constant term)
+
+#### In statsmodels, an intercept term must be added explicitly before fitting the model.
+
+```{python}
+import statsmodels.api as sm
+
+
+X_train = sm.add_constant(X_train)
+X_test  = sm.add_constant(X_test)
+```
+
+### Step 4 - Fit the model
+
+#### The linear regression model is fitted using statsmodels, and the results are examined through the model summary
+
+```{python}
+model = sm.OLS(y_train, X_train).fit()
+model.summary()
+```
+
+### Step 5 - Model Prediction
+
+#### Predictions are generated on the testing set and model performance is assessed using standard regression metrics.
+
+```{python}
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
+
+# Predictions
+y_pred = model.predict(X_test)
+
+# Metrics
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+rsq  = r2_score(y_test, y_pred)
+mae  = mean_absolute_error(y_test, y_pred)
+
+
+print(f"R Squared : {rsq}")
+print(f"RMSE : {rmse}")
+print(f"MAE : {mae}")
+```
+
+# Epilogue
+
+#### Working through both approaches made the difference very clear to me. With tidymodels, I can focus on the model because preprocessing is handled naturally inside the recipe, which helps reduce the risk of mistakes that could impact the results. In Python, even with powerful tools like statsmodels, I spend more time preparing the data before reaching the same point. The modeling step itself is simple in both cases, but the path to get there feels much more efficient in tidymodels.
