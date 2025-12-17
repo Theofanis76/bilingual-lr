@@ -1,6 +1,6 @@
 ---
 title: "The New Era of Machine Learning in R: A Bilingual Linear Regression Workflow (R vs Python)"
-author: "Theofanis Tsitrouls"
+author: "Theofanis Tsitroulis"
 format:
   html:
     theme: cosmo
@@ -278,4 +278,5 @@ print(f"MAE : {mae}")
 # Epilogue
 
 #### Working through both approaches made the difference very clear to me. With tidymodels, I can focus on the model because preprocessing is handled naturally inside the recipe, which helps reduce the risk of mistakes that could impact the results. In Python, even with powerful tools like statsmodels, I spend more time preparing the data before reaching the same point. The modeling step itself is simple in both cases, but the path to get there feels much more efficient in tidymodels.
+
 
